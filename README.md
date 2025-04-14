@@ -6,23 +6,25 @@ This guide helps you configure **AWS Load Balancer Controller** and **EBS CSI Dr
 
 ## ✅ ELB (Elastic Load Balancer) Setup
 
-### Step 1: Create IAM Role using `eksctl`
+### Step 1: Create IAM Role using eksctl
 
-#### 1. Download IAM Policy
+Download IAM Policy:
 
 ```bash
 curl -O https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.11.0/docs/install/iam_policy.json
-2. Create IAM Policy
-bash
-Copy
-Edit
+```
+
+Create the IAM Policy:
+
+```bash
 aws iam create-policy \
   --policy-name AWSLoadBalancerControllerIAMPolicy \
   --policy-document file://iam_policy.json
-3. Create IAM Service Account
-bash
-Copy
-Edit
+```
+
+Create IAM Service Account:
+
+```bash
 eksctl create iamserviceaccount \
   --cluster=alb-demo-cluster \
   --namespace=kube-system \
@@ -31,42 +33,51 @@ eksctl create iamserviceaccount \
   --attach-policy-arn=arn:aws:iam::<aws-account-id>:policy/AWSLoadBalancerControllerIAMPolicy \
   --region us-east-2 \
   --approve
-Step 2: Install AWS Load Balancer Controller
-1. Add and Update Helm Repo
-bash
-Copy
-Edit
+```
+
+### Step 2: Install AWS Load Balancer Controller
+
+Add Helm Repo:
+
+```bash
 helm repo add eks https://aws.github.io/eks-charts
 helm repo update
-2. Install Controller via Helm
-bash
-Copy
-Edit
+```
+
+Install the Controller:
+
+```bash
 helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
   -n kube-system \
   --set clusterName=alb-demo-cluster \
   --set serviceAccount.create=false \
   --set serviceAccount.name=aws-load-balancer-controller \
-  --set vpcId=vpc-xxxxxxxx \
-  --set image.repository=xxxxxxxx.dkr.ecr.us-east-2.amazonaws.com/amazon/aws-load-balancer-controller
-ℹ️ Note: If using helm upgrade, install CRDs manually:
+  --set vpcId=vpc-xxxxxxxxxxxxxxxxx \
+  --set image.repository=xxxxxxxxxx.dkr.ecr.us-east-2.amazonaws.com/amazon/aws-load-balancer-controller
+```
 
-bash
-Copy
-Edit
+Install CRDs (if not already installed):
+
+```bash
 wget https://raw.githubusercontent.com/aws/eks-charts/master/stable/aws-load-balancer-controller/crds/crds.yaml
 kubectl apply -f crds.yaml
-3. Verify Installation
-bash
-Copy
-Edit
+```
+
+Verify Installation:
+
+```bash
 kubectl get deployment -n kube-system aws-load-balancer-controller
-💾 EBS CSI Driver Setup
-Step 1: Create IAM Policy
-Save the policy to ebs-csi-policy.json
-json
-Copy
-Edit
+```
+
+---
+
+## 💾 EBS CSI Driver Setup
+
+### Step 1: Create IAM Policy for EBS CSI Driver
+
+Save the following to `ebs-csi-policy.json`:
+
+```json
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -87,17 +98,19 @@ Edit
     }
   ]
 }
-Create IAM Policy
-bash
-Copy
-Edit
+```
+
+Create the IAM Policy:
+
+```bash
 aws iam create-policy \
   --policy-name AmazonEKS_EBS_CSI_Driver_Policy \
   --policy-document file://ebs-csi-policy.json
-Step 2: Create Service Account with IAM Role
-bash
-Copy
-Edit
+```
+
+### Step 2: Create IAM Role & Service Account
+
+```bash
 eksctl create iamserviceaccount \
   --name ebs-csi-controller-sa \
   --namespace kube-system \
@@ -105,27 +118,31 @@ eksctl create iamserviceaccount \
   --attach-policy-arn arn:aws:iam::<ACCOUNT_ID>:policy/AmazonEKS_EBS_CSI_Driver_Policy \
   --approve \
   --override-existing-serviceaccounts
-bash
-Copy
-Edit
+```
+
+Verify:
+
+```bash
 kubectl get serviceaccount ebs-csi-controller-sa -n kube-system
-Step 3: Install the EBS CSI Driver
-bash
-Copy
-Edit
+```
+
+### Step 3: Install EBS CSI Driver
+
+```bash
 helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver
 helm repo update
-bash
-Copy
-Edit
+
 helm install aws-ebs-csi-driver aws-ebs-csi-driver/aws-ebs-csi-driver \
   --namespace kube-system \
   --set controller.serviceAccount.create=false \
   --set controller.serviceAccount.name=ebs-csi-controller-sa
-Step 4: Create a StorageClass
-yaml
-Copy
-Edit
+```
+
+### Step 4: Create StorageClass
+
+Save the following to `ebs-sc.yaml`:
+
+```yaml
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -138,10 +155,19 @@ parameters:
   kmsKeyId: "arn:aws:kms:REGION:ACCOUNT_ID:key/KEY_ID"
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
-Step 5: Create a PersistentVolumeClaim (PVC)
-yaml
-Copy
-Edit
+```
+
+Apply:
+
+```bash
+kubectl apply -f ebs-sc.yaml
+```
+
+### Step 5: Create PVC
+
+Save to `ebs-pvc.yaml`:
+
+```yaml
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -153,14 +179,19 @@ spec:
     requests:
       storage: 10Gi
   storageClassName: ebs-sc
-bash
-Copy
-Edit
+```
+
+Apply:
+
+```bash
 kubectl apply -f ebs-pvc.yaml
-Step 6: Deploy a Pod Using the PVC
-yaml
-Copy
-Edit
+```
+
+### Step 6: Create Pod with PVC
+
+Save to `app-pod.yaml`:
+
+```yaml
 apiVersion: v1
 kind: Pod
 metadata:
@@ -176,15 +207,19 @@ spec:
     - name: ebs-volume
       persistentVolumeClaim:
         claimName: ebs-pvc
-bash
-Copy
-Edit
+```
+
+Apply:
+
+```bash
 kubectl apply -f app-pod.yaml
-Step 7: Verification
-bash
-Copy
-Edit
+```
+
+### Step 7: Verify Everything
+
+```bash
 kubectl get pvc
 kubectl describe pod app-pod
-Then check in AWS Console:
-Elastic Block Store → Volumes
+```
+
+Go to AWS Console → Elastic Block Store → Volumes to check the volume.
